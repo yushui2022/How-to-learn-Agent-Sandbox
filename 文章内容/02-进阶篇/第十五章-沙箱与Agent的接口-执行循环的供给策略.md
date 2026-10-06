@@ -182,6 +182,34 @@ Kubernetes Agent Sandbox 关注的是把会话型、可暂停或长生命周期�
 
 选型顺序应是：先问状态是否必须连续，再问调用之间能否显式传递 artifact，最后才比较冷启动数字。安全敏感任务可以采用混合策略：规划阶段使用会话级沙箱，执行高风险工具时从干净模板派生调用级沙箱；但混合策略会增加编排复杂度，必须把跨沙箱状态和外部副作用写进设计评审。
 
+
+## 本章扩展：接口设计先确定复用边界
+
+一次 Agent 任务不应把“创建沙箱”隐藏在每个工具调用里。接口至少要显式区分：会话级沙箱、步骤级执行、快照点和最终 artifact。
+
+| 层次 | 复用对象 | 适合的场景 | 主要风险 |
+|---|---|---|---|
+| 会话级 | 同一工作区和进程树 | Coding Agent 连续修改和测试 | 状态污染、长时间驻留 |
+| 步骤级 | 一次命令与临时目录 | 不可信的独立计算 | 创建吞吐和结果搬运 |
+| 快照级 | 固定环境与阶段状态 | 批量评测、分支探索 | 快照版本和磁盘成本 |
+| artifact 级 | 文件、报告和日志 | 跨 Agent 交接 | 哈希、权限和生命周期 |
+
+```mermaid
+sequenceDiagram
+  participant A as Agent
+  participant R as Runtime API
+  participant S as Sandbox
+  A->>R: ensure(session_id, template)
+  R-->>A: sandbox_id + state
+  A->>R: exec(command, timeout, policy)
+  R->>S: 执行并记录事件
+  S-->>R: stdout / stderr / artifact
+  R-->>A: 结果与状态
+  A->>R: checkpoint 或 terminate
+```
+
+接口越明确，平台越能把重试、超时和回滚做成基础设施能力。第十六章再讨论为什么一个兼容 E2B 的接口仍然必须明确这些语义，而不能只模仿方法名。
+
 ## 本章小结
 
 Agent 沙箱接口的核心不是“执行一条命令”，而是管理意图、授权、执行、交付和记忆的闭环。会话级换来状态连续性；调用级换来干净边界；池化换来低尾延迟，却承担闲置资源与重置责任。比较方案时要分开延迟账、成本账和风险账，并用 `idempotency_key`、多层超时、结构化结果和 artifact 把失败变成可恢复事件。E2B 和 Kubernetes Agent Sandbox 提供了可借鉴的接口或编排方向，但兼容入口不能替代企业自己的状态、网络、凭据和审计契约。

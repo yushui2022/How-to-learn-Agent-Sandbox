@@ -121,6 +121,35 @@ Serverless 函数通常在调用结束后回收执行环境，冷启动换取成
 
 运营看板应同时显示：运行/暂停数量、平均与 P95 idle、暂停成功率、恢复成功率、恢复延迟 P50/P95、快照字节数、存储费用、因恢复失败而销毁的比例。只看“暂停数量”会奖励误暂停；只看“节点节省”会掩盖用户延迟。
 
+
+## 本章扩展：AutoPause 不是定时删除
+
+```mermaid
+stateDiagram-v2
+  [*] --> Running
+  Running --> Idle: 无执行事件超过阈值
+  Idle --> Pausing: 触发暂停策略
+  Pausing --> Paused: 内存与设备状态已保存
+  Paused --> Resuming: 收到下一次工具调用
+  Resuming --> Running: 健康检查通过
+  Idle --> Running: 短暂空闲，继续复用
+  Running --> Terminating: TTL 到期或任务完成
+  Paused --> Terminating: 保留期到期
+```
+
+暂停策略至少要同时看四个信号：最后一次工具调用、guest 内部进程、未完成的网络连接和任务预算。只看 API 心跳会误判：Agent 可能暂时没有调用 API，但 guest 里仍有编译或下载任务；反过来，API 连接还活着，也不代表沙箱仍有值得保留的工作。
+
+可以把决策写成一个简单的成本比较：
+
+```text
+继续驻留成本 = idle_time × memory_price
+暂停成本 = snapshot_write + resume_latency + state_risk
+```
+
+当预计等待时间足以覆盖暂停和恢复成本时才暂停。交互式 Coding Agent 往往更看重恢复延迟，批量评测则更适合在阶段边界统一暂停。暂停、恢复、销毁都必须产生生命周期事件，否则第十三章无法解释账单和资源变化。
+
+下一章会把这些生命周期事件变成 Agent 的执行行车记录仪。
+
 ## 本章小结
 
 AutoPause 是一个带状态和延迟的成本优化器。闲置比例必须从业务轨迹测量，80% 只能作为待验证假设；触发条件要区分人工等待、交互思考、批量队列和长任务。CubeSandbox 的 `pause/resume` 具备明确的快照绑定、TTL 和失败语义，但仍需为快照存储、网络重建、并发恢复和数据保留建立独立账本。
