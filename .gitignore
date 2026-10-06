@@ -1,0 +1,11 @@
+.codebuddy/
+.vscode/
+.idea/
+*.tmp
+*.bak
+
+# GitHub 正式提交范围之外的本地素材
+笔记图片/
+封面/
+发布产物/
+系列大纲.md
